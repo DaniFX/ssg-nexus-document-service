@@ -33,7 +33,7 @@ jobs:
           flags: |
             --port=8080
             --ingress=internal-and-cloud-load-balancing
-            --service-account=@${{ secrets.GPC_SERVICE_ACCOUNT_DOCUMENT_SERVICE }}
+            --service-account=${{ secrets.GCP_SERVICE_ACCOUNT_DOCUMENT_SERVICE }}
           env_vars: |
             ENV=production
             GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
