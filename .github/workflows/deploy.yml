@@ -1,0 +1,43 @@
+name: Deploy Document Service to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Permette di far partire il deploy anche manualmente
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write' # Fondamentale per la Workload Identity Federation
+
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          # Usiamo gli stessi secrets del registry/mail-reader
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ssg-document-service
+          region: europe-west8          # Allineato (Milano)
+          source: .                     # GCP farà la build Docker dal nostro Dockerfile
+          flags: |
+            --port=8080
+            --ingress=internal-and-cloud-load-balancing
+            --service-account=@${{ secrets.GPC_SERVICE_ACCOUNT_DOCUMENT_SERVICE }}
+          env_vars: |
+            ENV=production
+            GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET}}
+            GATEWAY_URL=${{ secrets.GATEWAY_URL }}
+            SERVICE_URL=${{ secrets.SERVICE_URL }}
+            INTERNAL_SECRET=${{ secrets.INTERNAL_SECRET }}
