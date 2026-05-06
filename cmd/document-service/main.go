@@ -14,58 +14,66 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Mock temporaneo per il GCSClient, da sostituire con il modulo GCS che metterai nell'SDK
-type mockGCS struct{}
-
-func (m *mockGCS) GenerateUploadURL(objectName, mimeType string, expiresIn int) (string, error) {
-	return "https://storage.googleapis.com/test-bucket/" + objectName + "?signed=true", nil
-}
-
 func main() {
-	// Carica il file .env se esiste (ignora l'errore in produzione su Cloud Run dove non c'è)
 	_ = godotenv.Load()
 
 	ctx := context.Background()
-	// Recupera le configurazioni dall'ambiente
-
 	projectID := os.Getenv("GCP_PROJECT_ID")
-	bucketName := os.Getenv("FIREBASE_STORAGE_BUCKET") // Es: ssg-nexus.firebasestorage.app
+	bucketName := os.Getenv("FIREBASE_STORAGE_BUCKET")
 
-	// 1. Inizializza Firestore (SDK)
-	fsClient, _ := firestore.NewClient(ctx, projectID)
+	// 1. Firestore
+	fsClient, err := firestore.NewClient(ctx, projectID)
+	if err != nil {
+		log.Fatalf("Firestore init error: %v", err)
+	}
+	defer fsClient.Close()
 	docRepo := repository.NewRepository(fsClient, "documents")
 
-	// 2. Inizializza il CLIENT REALE di GCS
+	// 2. GCS
 	gcsClient, err := storage.NewGCSClient(ctx, bucketName)
 	if err != nil {
-		log.Fatalf("Errore storage client: %v", err)
+		log.Fatalf("GCS client error: %v", err)
 	}
 
-	// 3. Iniezione dell'handler reale
+	// 3. Handler
 	docHandler := api.NewDocumentHandler(docRepo, gcsClient)
 
 	router := gin.Default()
 
+	// 4. Service Discovery — completo
 	serviceDef := nexus.ServiceDefinition{
 		ServiceName: "document-service",
-		Version:     "1.0.0",
-		Endpoints:   []nexus.Endpoint{}, // (Lascia la def. di prima)
+		Version:     "1.1.0",
+		Endpoints: []nexus.Endpoint{
+			{Path: "/api/v1/documents",                    Method: "GET",    AuthRequired: true, Summary: "Lista documenti (Navigator)"},
+			{Path: "/api/v1/documents/:id",               Method: "GET",    AuthRequired: true, Summary: "Dettaglio documento"},
+			{Path: "/api/v1/documents/:id/download-url",  Method: "GET",    AuthRequired: true, Summary: "Genera Signed URL download"},
+			{Path: "/api/v1/documents/upload-url",        Method: "POST",   AuthRequired: true, Summary: "Richiedi Signed URL upload (step 1)"},
+			{Path: "/api/v1/documents/finalize",          Method: "POST",   AuthRequired: true, Summary: "Finalizza upload e persisti metadati (step 3)"},
+			{Path: "/api/v1/documents/:id",               Method: "DELETE", AuthRequired: true, Summary: "Soft delete documento"},
+		},
 	}
 	nexus.RegisterDiscovery(router, serviceDef)
+	nexus.StartGatewayHandshake(serviceDef)
 
-	// Rotte protette
+	// 5. Rotte protette
 	apiGroup := router.Group("/api/v1")
 	apiGroup.Use(nexus.Guard())
 	{
-		apiGroup.POST("/documents/upload-url", docHandler.HandleGetUploadURL)
-		apiGroup.POST("/documents/finalize", docHandler.HandleFinalizeUpload)
+		apiGroup.GET("/documents",                   docHandler.HandleList)
+		apiGroup.GET("/documents/:id",               docHandler.HandleGetByID)
+		apiGroup.GET("/documents/:id/download-url",  docHandler.HandleGetDownloadURL)
+		apiGroup.POST("/documents/upload-url",       docHandler.HandleGetUploadURL)
+		apiGroup.POST("/documents/finalize",         docHandler.HandleFinalizeUpload)
+		apiGroup.DELETE("/documents/:id",            docHandler.HandleDelete)
 	}
-
-	nexus.StartGatewayHandshake(serviceDef)
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	router.Run(":" + port)
+	log.Printf("Document Service v1.1.0 avviato sulla porta %s", port)
+	if err := router.Run(":" + port); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
 }

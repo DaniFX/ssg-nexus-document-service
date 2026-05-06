@@ -18,26 +18,34 @@ func NewGCSClient(ctx context.Context, bucketName string) (*GCSClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &GCSClient{
-		client:     client,
-		bucketName: bucketName,
-	}, nil
+	return &GCSClient{client: client, bucketName: bucketName}, nil
 }
 
-// GenerateUploadURL crea un URL firmato per permettere al frontend l'upload diretto
-func (g *GCSClient) GenerateUploadURL(objectName string, mimeType string, expiresInMinutes int) (string, error) {
+// GenerateUploadURL genera un Signed URL PUT per upload diretto da browser (max 15 min)
+func (g *GCSClient) GenerateUploadURL(objectName, mimeType string, expiresInMinutes int) (string, error) {
 	opts := &storage.SignedURLOptions{
 		Scheme:      storage.SigningSchemeV4,
 		Method:      "PUT",
 		Expires:     time.Now().Add(time.Duration(expiresInMinutes) * time.Minute),
 		ContentType: mimeType,
 	}
-
-	// Firma l'URL usando il bucket configurato
 	url, err := g.client.Bucket(g.bucketName).SignedURL(objectName, opts)
 	if err != nil {
-		return "", fmt.Errorf("storage.SignedURL: %w", err)
+		return "", fmt.Errorf("storage.SignedURL (upload): %w", err)
 	}
+	return url, nil
+}
 
+// GenerateDownloadURL genera un Signed URL GET per lettura/download (default 60 min)
+func (g *GCSClient) GenerateDownloadURL(objectName string, expiresInMinutes int) (string, error) {
+	opts := &storage.SignedURLOptions{
+		Scheme:  storage.SigningSchemeV4,
+		Method:  "GET",
+		Expires: time.Now().Add(time.Duration(expiresInMinutes) * time.Minute),
+	}
+	url, err := g.client.Bucket(g.bucketName).SignedURL(objectName, opts)
+	if err != nil {
+		return "", fmt.Errorf("storage.SignedURL (download): %w", err)
+	}
 	return url, nil
 }
