@@ -14,14 +14,9 @@ jobs:
     uses: DaniFX/ssg-workflows/.github/workflows/cloudrun-deploy.yml@main
     with:
       service_name: ssg-document-service
-      # GCP_RUNTIME_SERVICE_ACCOUNT passato via secrets: inherit
-      # Aggiungi il secret nel repo con nome GCP_RUNTIME_SERVICE_ACCOUNT
-      # e valore: document-runtime-sa@ssg-api-99ac0.iam.gserviceaccount.com
-      env_vars: |
-        ENV=production
-        GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-        FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
-        GATEWAY_URL=${{ secrets.GATEWAY_URL }}
-        SERVICE_URL=${{ secrets.SERVICE_URL }}
-        INTERNAL_SECRET=${{ secrets.INTERNAL_SECRET }}
     secrets: inherit
+    # Secrets necessari nel repo:
+    #   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT_EMAIL
+    #   GCP_PROJECT_ID, FIREBASE_STORAGE_BUCKET
+    #   GATEWAY_URL, SERVICE_URL, INTERNAL_SECRET
+    #   GCP_RUNTIME_SERVICE_ACCOUNT (SA del servizio)
